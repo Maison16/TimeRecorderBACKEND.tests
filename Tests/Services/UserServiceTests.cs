@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Graph;
 using Microsoft.Kiota.Abstractions.Authentication;
 using Moq;
@@ -12,6 +13,11 @@ using TimeRecorderBACKEND.DataBaseContext;
 using TimeRecorderBACKEND.Dtos;
 using TimeRecorderBACKEND.Services;
 using Xunit;
+using ZiggyCreatures.Caching.Fusion;
+using ZiggyCreatures.Caching.Fusion.Backplane;
+using ZiggyCreatures.Caching.Fusion.Events;
+using ZiggyCreatures.Caching.Fusion.Plugins;
+using ZiggyCreatures.Caching.Fusion.Serialization;
 
 public class UserServiceTests
 {
@@ -31,6 +37,14 @@ public class UserServiceTests
                 Email = "jan@kowalski.com",
                 ExistenceStatus = TimeRecorderBACKEND.Enums.ExistenceStatus.Exist
             });
+            context.Users.Add(new TimeRecorderBACKEND.Models.User
+            {
+                Id = Guid.NewGuid(),
+                Name = "Anna",
+                Surname = "Lewandowska",
+                Email = "Anna@Lewandowska.com",
+                ExistenceStatus = TimeRecorderBACKEND.Enums.ExistenceStatus.Exist
+            });
             context.SaveChanges();
 
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
@@ -38,12 +52,13 @@ public class UserServiceTests
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, new FakeFusionCache());
 
             IEnumerable<UserDto> users = await service.GetAllAsync();
 
-            Assert.Single(users);
+            Assert.Equal(2, users.Count());
             Assert.Equal("Jan", users.First().Name);
+            Assert.Equal("Anna", users.Last().Name);
         }
     }
 
@@ -69,11 +84,12 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
-            UserDto user = await service.GetByIdAsync(userId);
+            UserDto? user = await service.GetByIdAsync(userId);
 
             Assert.NotNull(user);
             Assert.Equal("Anna", user.Name);
@@ -91,11 +107,12 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
-            UserDto user = await service.GetByIdAsync(Guid.NewGuid());
+            UserDto? user = await service.GetByIdAsync(Guid.NewGuid());
 
             Assert.Null(user);
         }
@@ -119,9 +136,10 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
             bool result = await service.AssignProjectAsync(Guid.NewGuid(), 1);
 
@@ -151,9 +169,10 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
             bool result = await service.AssignProjectAsync(userId, 999);
 
@@ -192,9 +211,10 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
             bool result = await service.UnassignProjectAsync(userId);
 
@@ -216,9 +236,10 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
             bool result = await service.UnassignProjectAsync(Guid.NewGuid());
 
@@ -258,11 +279,12 @@ public class UserServiceTests
             Mock<IEmailService> emailServiceMock = new Mock<IEmailService>();
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
-            ProjectDto projectDto = await service.GetUserProjectAsync(userId);
+            ProjectDto? projectDto = await service.GetUserProjectAsync(userId);
 
             Assert.NotNull(projectDto);
             Assert.Equal(projectId, projectDto.Id);
@@ -283,10 +305,10 @@ public class UserServiceTests
             Mock<IHttpContextAccessor> httpContextAccessorMock = new Mock<IHttpContextAccessor>();
             Mock<IAuthenticationProvider> authProviderMock = new Mock<IAuthenticationProvider>();
             GraphServiceClient graphClient = new GraphServiceClient(authProviderMock.Object);
+            Mock<IFusionCache> cacheMock = new Mock<IFusionCache>();
+            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object, cacheMock.Object);
 
-            UserService service = new UserService(graphClient, context, emailServiceMock.Object, httpContextAccessorMock.Object);
-
-            ProjectDto projectDto = await service.GetUserProjectAsync(userId);
+            ProjectDto? projectDto = await service.GetUserProjectAsync(userId);
 
             Assert.Null(projectDto);
         }
